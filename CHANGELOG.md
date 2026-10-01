@@ -4,6 +4,22 @@ All notable changes are documented here. 所有重要变更记录于此。
 
 Format follows [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/), and the project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.1.9] - 2026-10-01
+
+### Fixed / 修复
+
+- **Windows 上 llama.cpp 一键安装解包失败**。PATH 里的 `tar` 在 Windows 上不可信：老版 bsdtar 把 `C:\...` 盘符路径当 URI 的 host:path，报 `Cannot connect to C: resolve failed`；GNU tar 根本解不了 zip。统一改走 System32 自带的 bsdtar（Win10+ 必有，能解 zip），并配合「相对路径 + 显式 cwd」调用——盘符不再出现在任何参数里；`CommandRunner.run` 增加可选 `cwd`。
+- **小模型把工具调用当正文文本吐，泄漏进对话页 / TTS / 历史**（mimo 类蒸馏模型的已知毛病：不走 tool-call 字段，把 hermes 格式的调用写成正文；历史重放原样喂回后还会自我复制——用户说「别调工具直接给内容」，它照吐）。对话页没有执行器，这批标签现在整条链路清场：
+  - 新增第 5 种内联调用解析格式——XML 参数式（`function=` 开标签 + `parameter=` 参数对）；Agent 页因此能识别并**真正执行**这类调用；
+  - 对话页收尾净化后落库，`done` 事件带净化内容（前端整体替换流式已显示的文本，标签不残留）；整条回复都是调用时落一条说明并指路 Agent 页（记 `chat.toolcall.stripped` 日志）；停止生成先净化再拼「已停止」，中断在调用写到一半时半截标签从开标签处截掉；
+  - 流式闸门：累积正文里一旦出现**成形**调用，停止向显示 / TTS 通道吐后续增量（判据是「成形」而非「出现开标签」，检查有 256 字符步长 + 廉价 marker 前置，普通回答零开销）；
+  - 历史重放前净化助手消息——已落库的旧泄漏在这顺手治好，不再喂回模型。
+  - **回归**：`tool-call-healing` 25 项（真实泄漏的逐字节形态、未闭合截断、正文误杀防护），chat / agent-history / i18n 新增 13 个用例。
+
+### Internal / 内部
+
+- **CI 回绿**（单元 + smoke 首次全绿）：agent 权限冒烟的三处断言对齐此前的两个权限安全修复（工作区外的写独立成 `external_write`、通配 allow 命中危险命令降级 ask），并把「精确规则不降级」「通配不放行危险命令」钉进冒烟；engine-install 测试的 fake runner 按 basename 认 tar（修 macOS CI 上的 Windows 解包用例）。
+
 ## [0.1.8] - 2026-09-30
 
 ### Fixed / 修复
